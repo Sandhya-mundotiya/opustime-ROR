@@ -1,0 +1,50 @@
+class Appointment < ActiveRecord::Base
+  include PublicActivity::Model
+  include PlivoSms  
+  include Reminder::ReadyMade
+  include ActionView::Helpers::SanitizeHelper
+
+  audited only: [:created_at, :appnt_date, :appnt_time_start, :notes, :user_id, :patient_id, 
+                :appnt_time_end, :patient_arrive, :appnt_status, :updated_at],
+                on: [:update, :destroy , :create] , allow_mass_assignment: true
+  
+  tracked owner: Proc.new { |controller, model| controller.try(:current_user).present? ? controller.current_user : model.patient } ,
+    company: Proc.new { |controller, model| model.patient.company },
+    business_id: Proc.new { |controller, model| model.business.try(:id) }
+
+  has_associated_audits
+  
+  belongs_to :user
+  belongs_to :patient
+  delegate :company, :to => :patient, :allow_nil => true
+  belongs_to :booker, :polymorphic => true
+  belongs_to :canceller, :polymorphic => true
+  belongs_to :rescheduler, :polymorphic => true
+  
+  
+  has_one :appointment_types_appointment, :dependent=> :destroy
+  has_one :appointment_type , :through => :appointment_types_appointment , :dependent=> :destroy
+  accepts_nested_attributes_for :appointment_types_appointment , :allow_destroy => true
+  
+  has_one :wait_lists_appointment , :dependent=> :destroy
+  has_one :wait_list , :through => :wait_lists_appointment , :dependent=> :destroy
+  accepts_nested_attributes_for :wait_lists_appointment , :allow_destroy => true 
+  
+  has_many :appointments_invoices ,  :dependent => :destroy
+  has_many :invoices , :through=> :appointments_invoices ,  :dependent => :destroy
+  
+  has_many :treatment_notes_appointments ,  :dependent => :destroy
+  has_many :treatment_notes , :through=> :treatment_notes_appointments ,  :dependent => :destroy
+  
+  scope :active_appointment, ->{ where(status: true)}
+  scope :not_cancelled, ->{ where(cancellation_time: nil)}
+  
+  validates :repeat_by ,  :inclusion => { :in => %w(day week month),
+    :message => "%{value} is not a valid repeat by" } , :allow_nil=> true 
+    
+  validates  :repeat_start , :repeat_end , :numericality => { :only_integer => true , :greater_than_or_equal_to => 1  } , :unless =>"repeat_by.nil? || repeat_by.blank?"
+  validates   :patient_id , :appnt_date , :appnt_time_start , :appnt_time_end , presence: true
+  
+  validates_presence_of  :user_id
+--------------------------------------------------------
+ end
